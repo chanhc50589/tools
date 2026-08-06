@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Text Tools – Paste / Encrypt / Decrypt</title>
+<style>
+  body {font-family: Arial, sans-serif; margin: 20px;}
+  .section {display:none; margin-top:15px;}
+  textarea {width:100%; height:120px; margin-top:5px;}
+  button {margin-top:5px;}
+  #rawInput {border:1px solid #ccc; padding:5px; min-height:120px;}
+</style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js" integrity="sha512-a+SUDuwNzXDvz4XrIcXHuCf089/iJAoN4lmrXJg18XnduKK6YlDHNRalv4yd1N40OKI80tFidF+rqTFKGPoWFQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+
+<h2>Choose a function</h2>
+<select id="funcSelect">
+  <option value="paste">1 – Paste & Convert</option>
+  <option value="encrypt">2 – Encrypt Text</option>
+  <option value="decrypt">3 – Decrypt Text</option>
+</select>
+
+<hr>
+
+<!-- 1 – Paste & Convert -->
+<!-- 1 – Paste & Convert (updated) -->
+<div id="paste" class="section">
+  <h3>Paste & Convert</h3>
+  <label>Plain or Rich‑text input:</label><br>
+  <div id="rawInput" contenteditable="true" placeholder="Paste here…"><div><p id="123">testing</p><br><h2 id="123" class="123">Edit here</h2></div></div><br>
+
+  <button onclick="convertToHtml()">Convert to HTML</button><br>
+
+  <label>HTML output:</label><br>
+  <textarea id="htmlOutput" readonly></textarea><br>
+
+  <button onclick="copyFrom('htmlOutput')">Copy HTML</button>
+  <!-- New button -->
+  <button onclick="stripAttributes()">Remove element attributes</button>
+</div>
+
+<!-- 2 – Encrypt -->
+<div id="encrypt" class="section">
+  <h3>Encrypt Text</h3>
+  <label>Text to encrypt (use output from function 1 if desired):</label><br>
+  <textarea id="encInput"></textarea><br>
+
+  <label>Passphrase:</label><br>
+  <input type="password" id="encPass" placeholder="Secret key"><br>
+
+  <label>Iteration count (default 3):</label><br>
+  <input type="number" id="encIter" value="3" min="1"><br>
+
+  <button onclick="encryptText()">Encrypt</button><br>
+
+  <label>Encrypted output:</label><br>
+  <textarea id="encOutput"></textarea><br>
+
+  <button onclick="copyFrom('encOutput')">Copy Ciphertext</button>
+</div>
+
+<!-- 3 – Decrypt -->
+<div id="decrypt" class="section">
+  <h3>Decrypt Text</h3>
+  <label>Ciphertext:</label><br>
+  <textarea id="decInput"></textarea><br>
+
+  <label>Passphrase:</label><br>
+  <input type="password" id="decPass" placeholder="Secret key"><br>
+
+  <label>Iteration count (must match encryption):</label><br>
+  <input type="number" id="decIter" value="3" min="1"><br>
+
+  <button onclick="decryptText()">Decrypt</button><br>
+
+  <label>Decrypted output:</label><br>
+  <textarea id="decOutput"></textarea><br>
+
+  <button onclick="copyFrom('decOutput')">Copy Plaintext</button>
+</div>
+
+<script>
+/* ---------- UI handling ---------- */
+document.getElementById('funcSelect').addEventListener('change', function () {
+  document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
+  document.getElementById(this.value).style.display = 'block';
+});
+document.getElementById('funcSelect').dispatchEvent(new Event('change'));
+
+/* ---------- Function 1: Paste & Convert ---------- */
+function convertToHtml() {
+  document.getElementById('htmlOutput').value = document.getElementById('rawInput').innerHTML;
+}
+
+/* ---------- Strip attributes from selected tags ---------- */
+function stripAttributes(parentTag = '*', childTag = '*') {
+  // Get the HTML to process
+  const html = document.getElementById('htmlOutput').value;
+  if (!html) {
+    alert('No HTML to process.');
+    return;
+  }
+
+  // Parse the HTML into a temporary document
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  // Build selectors – “*” means “any element”
+  const parentSelector = parentTag === '*' ? '*' : parentTag;
+  const childSelector  = childTag  === '*' ? '*' : childTag;
+
+  // Find every parent element (including the body itself when parentTag === '*')
+  const parentElements = doc.body.querySelectorAll(parentSelector);
+
+  parentElements.forEach(parent => {
+    // All matching descendants inside this parent
+    const children = parent.querySelectorAll(childSelector);
+
+    children.forEach(child => {
+      // Remove attributes **backwards** so the live NamedNodeMap isn’t corrupted
+      for (let i = child.attributes.length - 1; i >= 0; i--) {
+        child.removeAttribute(child.attributes[i].name);
+      }
+    });
+  });
+
+  // Write the cleaned HTML back to the textarea
+  document.getElementById('htmlOutput').value = doc.body.innerHTML;
+}
+
+
+/* ---------- Iterated AES helpers ---------- */
+function encrypt(message, passphrase, times) {
+  let result = CryptoJS.AES.encrypt(message, passphrase).toString();
+  for (let i = 1; i < times; i++) {
+    result = CryptoJS.AES.encrypt(result, passphrase).toString();
+  }
+  return result;
+}
+
+function decrypt(ciphertext, passphrase, times) {
+  let result = ciphertext;
+  for (let i = 0; i < times; i++) {
+    const bytes = CryptoJS.AES.decrypt(result, passphrase);
+    result = bytes.toString(CryptoJS.enc.Utf8);
+  }
+  return result;
+}
+
+/* ---------- Function 2: Encrypt ---------- */
+function encryptText() {
+  const text = document.getElementById('encInput').value;
+  const pass = document.getElementById('encPass').value;
+  const iter = parseInt(document.getElementById('encIter').value, 10) || 3;
+
+  if (!text || !pass) {
+    alert('Please provide both text and passphrase.');
+    return;
+  }
+
+  document.getElementById('encOutput').value = encrypt(text, pass, iter);
+  document.getElementById('decOutput').value = '';
+}
+
+/* ---------- Function 3: Decrypt ---------- */
+function decryptText() {
+  const cipher = document.getElementById('decInput').value;
+  const pass = document.getElementById('decPass').value;
+  const iter = parseInt(document.getElementById('decIter').value, 10) || 3;
+
+  if (!cipher || !pass) {
+    alert('Please provide both ciphertext and passphrase.');
+    return;
+  }
+
+  const plain = decrypt(cipher, pass, iter);
+  if (plain === '') {
+    alert('Decryption failed – check passphrase and iteration count.');
+  }
+  document.getElementById('decOutput').value = plain;
+  document.getElementById('encOutput').value = '';
+}
+
+/* ---------- Clipboard helper ---------- */
+function copyFrom(elementId) {
+  const el = document.getElementById(elementId);
+  navigator.clipboard.writeText(el.value).then(
+    () => console.log('Copied to clipboard'),
+    err => alert('Copy failed: ' + err)
+  );
+}
+</script>
+</body>
+</html>
