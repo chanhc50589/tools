@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Web Previewer Pro</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            overflow: hidden;
+            background: #1e1e1e;
+        }
+        header {
+            padding: 10px 20px;
+            background: #2c3e50;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .container {
+            display: flex;
+            flex: 1;
+            width: 100%;
+            background: #fff;
+        }
+        .editor-side {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 2px solid #444;
+        }
+        textarea {
+            flex: 1;
+            padding: 15px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            border: none;
+            outline: none;
+            resize: none;
+            background: #252526;
+            color: #d4d4d4;
+        }
+        .preview-side {
+            flex: 1;
+            background: white;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }
+        button {
+            padding: 6px 12px;
+            cursor: pointer;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        button.run { background: #27ae60; font-weight: bold; font-size: 14px; }
+        button:hover { opacity: 0.9; }
+        select { padding: 5px; border-radius: 4px; background: #ecf0f1; }
+        .shortcuts { display: flex; gap: 8px; align-items: center; border-left: 1px solid #555; padding-left: 15px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <select id="mode">
+        <option value="html">HTML/CSS/JS</option>
+        <option value="js">JS Only</option>
+    </select>
+    
+    <button class="run" onclick="runPreview()">▶ Run Code</button>
+
+    <div class="shortcuts">
+        <span>Shortcuts:</span>
+        <button onclick="setExample('html')">HTML Demo</button>
+        <button onclick="setExample('js')">JS Demo</button>
+	<button onclick="clearCode()">clear</button>
+    </div>
+</header>
+
+<div class="container">
+    <div class="editor-side">
+        <textarea id="code" placeholder="Type code here..."></textarea>
+    </div>
+    <div class="preview-side">
+        <iframe id="preview" sandbox="allow-scripts" allow="none"></iframe>
+    </div>
+</div>
+
+<script>
+    let currentBlobUrl = null;
+
+    function clearCode() { document.getElementById('code').value = ''; }
+
+    function setExample(type) {
+        const modeSelector = document.getElementById('mode');
+        const codeArea = document.getElementById('code');
+        
+        if (type === 'html') {
+            modeSelector.value = 'html';
+            codeArea.value = '<h1>Hello</h1>\n<style>\n  h1 { color: blue; font-family: sans-serif; }\n</style>\n<script>console.log("HTML Mode Loaded")<\/script>';
+        } else {
+            modeSelector.value = 'js';
+            codeArea.value = 'const greet = "Hello World";\nconsole.log(greet);\nconsole.log(5 * 5);\nconsole.log({ status: "Secure", logic: 10 * 10 });';
+        }
+        runPreview();
+    }
+
+    function runPreview() {
+        const mode = document.getElementById('mode').value;
+        const code = document.getElementById('code').value;
+        const iframe = document.getElementById('preview');
+        
+        if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+
+        // Security: Prevent script tag injection by escaping closing tags
+        const sanitizedCode = code.replace(/<\/script>/gi, '<\\/script>');
+
+        // Security: CSP prevents the code from reaching out to external servers
+        const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;">`;
+
+        let finalContent = "";
+
+        if (mode === 'html') {
+            finalContent = `<!DOCTYPE html><html><head>${cspMeta}</head><body>${code}</body></html>`;
+        } else {
+            finalContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    ${cspMeta}
+                    <style>
+                        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #7cfc00; font-size: 14px; }
+                        .log { border-bottom: 1px solid #333; padding: 8px 0; white-space: pre-wrap; }
+                    </style>
+                </head>
+                <body>
+                    <div id="out"></div>
+                    <script>
+                        const out = document.getElementById('out');
+                        // Safe console implementation using textContent
+                        console.log = (...args) => {
+                            args.forEach(a => {
+                                const d = document.createElement('div');
+                                d.className = 'log';
+                                d.textContent = typeof a === 'object' ? JSON.stringify(a, null, 2) : a;
+                                out.appendChild(d);
+                            });
+                        };
+                        try { 
+                            ${sanitizedCode} 
+                        } catch (e) { 
+                            const err = document.createElement('div');
+                            err.style.color = '#ff5555';
+                            err.textContent = e.stack || e;
+                            out.appendChild(err);
+                        }
+                    <\/script>
+                </body>
+                </html>`;
+        }
+
+        const blob = new Blob([finalContent], { type: 'text/html' });
+        currentBlobUrl = URL.createObjectURL(blob);
+        iframe.src = currentBlobUrl;
+    }
+
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runPreview();
+    });
+</script>
+
+</body>
+</html>
