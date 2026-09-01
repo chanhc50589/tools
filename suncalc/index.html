@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SunCalc - Hong Kong Time</title>
+    <!-- Load SunCalc from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 900px; margin: 30px auto; padding: 0 20px; }
+        .controls { margin-bottom: 20px; text-align: center; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background-color: #f4f4f4; }
+        code { background: #eee; padding: 2px 4px; border-radius: 4px; }
+        input[type="date"] { padding: 6px; font-size: 1rem; }
+        .upcoming { background-color: #ffffe0 !important; }
+    </style>
+</head>
+<body>
+
+<h2 style="text-align:center;">太陽方位計算 (香港時間 - HKT)</h2>
+
+<div class="controls">
+    <label for="datePicker">選擇日期 (Select Date): </label>
+    <input type="date" id="datePicker">
+</div>
+
+<table id="sunTable">
+    <thead>
+        <tr>
+            <th>事件 (Property)</th>
+            <th>時間 (Time)</th>
+            <th>時間差 (Time Diff)</th>
+            <th>說明 (Traditional Chinese Description)</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+    // Coordinates for Hong Kong
+    const lat = 22.3193;
+    const lng = 114.1694;
+
+    const datePicker = document.getElementById('datePicker');
+    const tbody = document.querySelector('#sunTable tbody');
+
+    // Traditional Chinese descriptions for SunCalc keys
+    const descriptions = {
+        solarNoon: "太陽中天（太陽達到最高點的時刻）",
+        nadir: "最低點（夜間最深處，太陽位於地平線下方最深處）",
+        sunrise: "日出（太陽上緣剛好接觸地平線）",
+        sunset: "日落（太陽下緣剛好沒入地平線）",
+        sunriseEnd: "日出結束（太陽完全離開地平線）",
+        sunsetStart: "日落開始（太陽開始接觸地平線）",
+        dawn: "黎明/晨光（早晨曙光初現，民用晨光開始）",
+        dusk: "黃昏/暮光（傍晚民用暮光結束，天空開始變暗）",
+        nauticalDawn: "航海黎明（航海晨光開始，地平線開始隱約可見）",
+        nauticalDusk: "航海黃昏（航海暮光結束，地平線逐漸消失）",
+        nightEnd: "夜晚結束（天文晨光開始，天空不再完全黑暗）",
+        night: "夜晚開始（天文暮光開始，夜空達到最暗狀態）",
+        goldenHourEnd: "黃金時刻結束（早晨黃金光線結束，適合攝影）",
+        goldenHour: "黃金時刻開始（傍晚黃金光線開始，光線柔和溫暖）"
+    };
+
+    // Helper to format date to HKT string
+    function formatHKT(dateObj) {
+        if (!dateObj) return "N/A";
+        return dateObj.toLocaleTimeString("en-HK", {
+            timeZone: "Asia/Hong_Kong",
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+
+    // Helper to calculate time difference string
+    function getTimeDiff(targetDate, now) {
+        if (!targetDate) return "";
+        const diffMs = targetDate - now;
+        const diffMinsTotal = Math.round(diffMs / 60000);
+        const absMins = Math.abs(diffMinsTotal);
+        
+        const hours = Math.floor(absMins / 60);
+        const mins = absMins % 60;
+        
+        let timeStr = "";
+        if (hours > 0) {
+            timeStr += `${hours} hr${hours > 1 ? 's' : ''} `;
+        }
+        timeStr += `${mins} min${mins !== 1 ? 's' : ''}`;
+
+        if (diffMinsTotal > 0) {
+            return `${timeStr} left`;
+        } else if (diffMinsTotal < 0) {
+            return `${timeStr} ago`;
+        } else {
+            return "Now";
+        }
+    }
+
+    // Function to update the table based on selected date
+    function updateTable(selectedDate) {
+        tbody.innerHTML = "";
+        const times = SunCalc.getTimes(selectedDate, lat, lng);
+        const now = new Date();
+
+        // Convert times object to an array and sort by ascending time
+        const timesArray = [];
+        for (const key in times) {
+            if (times[key]) {
+                timesArray.push({ key: key, time: times[key] });
+            }
+        }
+        timesArray.sort((a, b) => a.time - b.time);
+
+        // Find the upcoming property index (first event whose time is in the future)
+        let upcomingIndex = -1;
+        for (let i = 0; i < timesArray.length; i++) {
+            if (timesArray[i].time > now) {
+                upcomingIndex = i;
+                break;
+            }
+        }
+
+        // Populate table rows
+        timesArray.forEach((item, index) => {
+            const row = tbody.insertRow();
+            
+            if (index === upcomingIndex) {
+                row.classList.add('upcoming');
+            }
+            
+            // Property Name
+            row.insertCell(0).innerHTML = `<code>${item.key}</code>`;
+            
+            // Time in HKT
+            row.insertCell(1).textContent = formatHKT(item.time);
+
+            // Time Difference
+            row.insertCell(2).textContent = getTimeDiff(item.time, now);
+            
+            // Traditional Chinese Description
+            const descCell = row.insertCell(3);
+            descCell.textContent = descriptions[item.key] || "無說明";
+        });
+    }
+
+    // Initialize with today's date in local time string format (YYYY-MM-DD)
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const formattedToday = `${year}-${month}-${day}`;
+
+    datePicker.value = formattedToday;
+    updateTable(today);
+
+    // Listen for date changes
+    datePicker.addEventListener('change', (e) => {
+        if (!e.target.value) return;
+        const selectedDate = new Date(e.target.value + 'T00:00:00');
+        updateTable(selectedDate);
+    });
+</script>
+
+</body>
+</html>
